@@ -1,0 +1,43 @@
+# aiorg: create the labels the org routes on (idempotent). Issue forms and triage only apply labels
+# that exist. Runs daily and when .aiorg/config.yaml changes on the default branch; for labels right
+# after enabling, push a change to .aiorg/config.yaml. No manual trigger (ADR 0014).
+name: aiorg-labels
+on:
+  schedule:
+    - cron: "11 5 * * *"
+  push:
+    branches: ["master"]
+    paths: [".aiorg/config.yaml"]
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: aiorg-labels
+  cancel-in-progress: false
+jobs:
+  labels:
+    if: vars.AIORG_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      AIORG_HOME: ${{ github.workspace }}/aiorg
+      REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out aiorg control plane (pinned)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: jeffreypalermo/aiorg
+          ref: "4bdd7fda7b08af8a699bac987d60a8179e15a5ba"
+          # A read-only token for the aiorg repository when it is private; the default token when public.
+          token: ${{ secrets.AIORG_READ_TOKEN || github.token }}
+          path: aiorg
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Build aiorg CLI
+        working-directory: aiorg
+        run: dotnet build src/Aiorg.Cli -c Release -o ../aiorg-bin --nologo -v quiet
+      - name: Create or correct the aiorg labels
+        run: dotnet aiorg-bin/aiorg.dll labels sync --repo "$REPO"
