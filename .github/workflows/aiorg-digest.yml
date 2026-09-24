@@ -1,0 +1,42 @@
+# aiorg v0 piece 8: weekday digest. Updates one pinned "AI org status" issue.
+name: aiorg-digest
+on:
+  schedule:
+    - cron: "0 8 * * 1-5"
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+  actions: read
+  checks: read
+concurrency:
+  group: aiorg-digest
+  cancel-in-progress: false
+jobs:
+  digest:
+    # The digest keeps running in READ_ONLY; only AIORG_ENABLED gates it.
+    if: vars.AIORG_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AIORG_HOME: ${{ github.workspace }}/aiorg
+      REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out aiorg control plane (pinned)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: jeffreypalermo/aiorg
+          ref: "4bdd7fda7b08af8a699bac987d60a8179e15a5ba"
+          # A read-only token for the aiorg repository when it is private; the default token when public.
+          token: ${{ secrets.AIORG_READ_TOKEN || github.token }}
+          path: aiorg
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Build aiorg CLI
+        working-directory: aiorg
+        run: dotnet build src/Aiorg.Cli -c Release -o ../aiorg-bin --nologo -v quiet
+      - name: Build the digest and update the pinned status issue
+        run: dotnet aiorg-bin/aiorg.dll digest --repo "$REPO" --publish
